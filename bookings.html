@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LuxeStay — My Bookings</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🏨</div>
+      <div class="logo-name">LuxeStay</div>
+      <div class="logo-sub">Hotel & Restaurant</div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="sidebar-avatar">G</div>
+      <div>
+        <div class="user-name" id="sidebar-name">Guest</div>
+        <div class="user-role" id="sidebar-role">GUEST</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" id="logout-btn">⏻ &nbsp;Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <h1 class="font-display">📋 My Bookings</h1>
+        <div class="page-header-sub" id="booking-count">Loading…</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="renderBookings()">⟳ Refresh</button>
+    </div>
+
+    <div class="filter-bar">
+      <span class="filter-label">Status:</span>
+      <button class="filter-btn active" data-filter="status" data-val="All"       onclick="setFilter('status','All',this)">All</button>
+      <button class="filter-btn"        data-filter="status" data-val="Confirmed"  onclick="setFilter('status','Confirmed',this)">Confirmed</button>
+      <button class="filter-btn"        data-filter="status" data-val="Cancelled"  onclick="setFilter('status','Cancelled',this)">Cancelled</button>
+      <div class="filter-sep"></div>
+      <span class="filter-label">Type:</span>
+      <button class="filter-btn active" data-filter="type" data-val="All"         onclick="setFilter('type','All',this)">All</button>
+      <button class="filter-btn"        data-filter="type" data-val="hotel"        onclick="setFilter('type','hotel',this)">🏨 Hotel</button>
+      <button class="filter-btn"        data-filter="type" data-val="restaurant"   onclick="setFilter('type','restaurant',this)">🍽 Restaurant</button>
+    </div>
+
+    <div class="two-panel" style="height:calc(100vh - 150px);">
+      <!-- Left: list -->
+      <div class="panel-left" id="bookings-list"></div>
+
+      <!-- Right: detail -->
+      <div class="panel-right" id="booking-detail">
+        <div class="detail-placeholder">
+          <div class="detail-placeholder-icon">📋</div>
+          <h3>Select a booking</h3>
+          <p>Click any booking to view full details</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/database.js"></script>
+<script src="js/utils.js"></script>
+<script>
+  const user = authGuard();
+  if (user) {
+    buildSidebar("bookings");
+
+    const filters = { status:"All", type:"All" };
+    let selectedId = null;
+
+    window.setFilter = function(key, val, btn) {
+      filters[key] = val;
+      document.querySelectorAll(`[data-filter="${key}"]`).forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderBookings();
+    };
+
+    window.renderBookings = function() {
+      let bookings = getUserBookings();
+      if (filters.status !== "All") bookings = bookings.filter(b => b.status === filters.status);
+      if (filters.type   !== "All") bookings = bookings.filter(b => b.type   === filters.type);
+      bookings.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      document.getElementById("booking-count").textContent = `${bookings.length} booking(s) found`;
+
+      const listEl = document.getElementById("bookings-list");
+      if (!bookings.length) {
+        listEl.innerHTML = emptyState("📭", "No bookings found",
+          "Try adjusting filters or make a new booking",
+          "🏨 Book a Room", "hotel.html");
+        return;
+      }
+
+      listEl.innerHTML = bookings.map(b => {
+        const isSel  = b.id === selectedId;
+        const icon   = b.type === "hotel" ? "🏨" : "🍽";
+        const title  = b.type === "hotel"
+          ? `Room ${b.roomId} — ${b.roomType}`
+          : `Table ${b.tableId} — ${b.zone} Zone`;
+        const meta   = b.type === "hotel"
+          ? `${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}  •  ${b.nights} night(s)  •  $${b.total?.toLocaleString()}`
+          : `${fmtDate(b.date)}  •  ${b.mealTime}  •  ${b.guests} guest(s)`;
+
+        return `
+          <div class="booking-card${isSel ? " selected" : ""}" onclick="viewDetail('${b.id}')">
+            <div class="booking-top">
+              <div>
+                <div class="booking-title">${icon} ${title}</div>
+                <div class="booking-meta">${meta}</div>
+                <div class="booking-id" style="margin-top:4px;">${b.id}</div>
+              </div>
+              <div>${statusBadge(b.status)}</div>
+            </div>
+            <div class="booking-actions">
+              <button class="btn btn-ghost btn-sm" onclick="viewDetail('${b.id}'); event.stopPropagation();">View Details</button>
+              ${b.status === "Confirmed"
+                ? `<button class="btn btn-danger btn-sm" onclick="confirmCancel('${b.id}'); event.stopPropagation();">Cancel</button>`
+                : ""}
+            </div>
+          </div>`;
+      }).join("");
+    };
+
+    window.viewDetail = function(id) {
+      selectedId = id;
+      renderBookings();
+      const b   = getBooking(id);
+      if (!b) return;
+
+      const icon  = b.type === "hotel" ? "🏨" : "🍽";
+      const rows  = b.type === "hotel" ? [
+        ["Room",        `${b.roomId} — ${b.roomType}`],
+        ["Bed Type",    b.bedType],
+        ["Floor",       b.floor],
+        ["Check-in",    fmtDate(b.checkIn)],
+        ["Check-out",   fmtDate(b.checkOut)],
+        ["Nights",      b.nights],
+        ["Guests",      b.guests],
+        ["Per Night",   `$${b.pricePerNight}`],
+        ["Total",       `$${b.total?.toLocaleString()}`],
+      ] : [
+        ["Table",       `${b.tableId} — ${b.zone} Zone`],
+        ["Seats",       b.seats],
+        ["Date",        fmtDate(b.date)],
+        ["Meal Time",   b.mealTime],
+        ["Guests",      b.guests],
+      ];
+
+      document.getElementById("booking-detail").innerHTML = `
+        <h3 style="color:var(--gold); margin-bottom:16px;">${icon} Booking Details</h3>
+
+        <div class="card" style="margin-bottom:16px;">
+          <div style="font-size:1.1rem; font-weight:700; color:var(--gold); margin-bottom:6px;">${b.id}</div>
+          ${statusBadge(b.status)}
+          <div style="font-size:0.78rem; color:var(--text-3); margin-top:6px;">${fmtDateTime(b.createdAt)}</div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">Guest Information</div>
+          <div class="card">
+            <div class="detail-row"><span class="detail-key">Name</span><span class="detail-val">${b.guestName}</span></div>
+            <div class="detail-row"><span class="detail-key">Username</span><span class="detail-val">${b.username}</span></div>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">${b.type === "hotel" ? "Room" : "Reservation"} Details</div>
+          <div class="card">
+            ${rows.map(([k,v]) => `
+              <div class="detail-row">
+                <span class="detail-key">${k}</span>
+                <span class="detail-val">${v}</span>
+              </div>`).join("")}
+          </div>
+        </div>
+
+        ${b.specialRequests ? `
+          <div class="detail-section">
+            <div class="detail-section-title">Special Requests</div>
+            <div class="card"><p style="font-size:0.88rem; color:var(--text-2);">${b.specialRequests}</p></div>
+          </div>` : ""}
+
+        <div class="divider"></div>
+
+        ${b.status === "Confirmed"
+          ? `<button class="btn btn-danger btn-full" style="margin-bottom:8px;" onclick="confirmCancel('${b.id}')">✕ Cancel Booking</button>`
+          : ""}
+        <a href="${b.type === "hotel" ? "hotel.html" : "restaurant.html"}"
+           class="btn btn-gold btn-full">
+          ${b.type === "hotel" ? "🏨 Book Another Room" : "🍽 Make Another Reservation"}
+        </a>`;
+    };
+
+    window.confirmCancel = function(id) {
+      const b = getBooking(id);
+      showConfirm(
+        "Cancel Booking",
+        `Are you sure you want to cancel booking ${id}?\n\nThis action cannot be undone.`,
+        () => {
+          const result = cancelBooking(id);
+          if (result.ok) {
+            showToast(result.msg, "success");
+            if (selectedId === id) {
+              selectedId = null;
+              document.getElementById("booking-detail").innerHTML = `
+                <div class="detail-placeholder">
+                  <div class="detail-placeholder-icon">📋</div>
+                  <h3>Select a booking</h3>
+                  <p>Click any booking to view full details</p>
+                </div>`;
+            }
+            renderBookings();
+          } else {
+            showToast(result.msg, "error");
+          }
+        }
+      );
+    };
+
+    renderBookings();
+  }
+</script>
+</body>
+</html>

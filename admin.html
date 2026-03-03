@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LuxeStay — Admin</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🏨</div>
+      <div class="logo-name">LuxeStay</div>
+      <div class="logo-sub">Hotel & Restaurant</div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="sidebar-avatar">A</div>
+      <div>
+        <div class="user-name" id="sidebar-name">Admin</div>
+        <div class="user-role" id="sidebar-role">ADMIN</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" id="logout-btn">⏻ &nbsp;Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <h1 class="font-display">⚙️ Admin Panel</h1>
+        <div class="page-header-sub">System overview and booking management</div>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <!-- Stats -->
+      <div class="stats-grid" id="admin-stats"></div>
+
+      <!-- Tabs -->
+      <div style="display:flex; gap:8px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <button class="btn btn-gold   btn-sm" id="tab-bookings" onclick="showTab('bookings')">All Bookings</button>
+        <button class="btn btn-ghost  btn-sm" id="tab-rooms"    onclick="showTab('rooms')">Room Status</button>
+        <button class="btn btn-ghost  btn-sm" id="tab-users"    onclick="showTab('users')">Users</button>
+      </div>
+
+      <!-- Tab panels -->
+      <div id="panel-bookings"></div>
+      <div id="panel-rooms"    style="display:none;"></div>
+      <div id="panel-users"    style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/database.js"></script>
+<script src="js/utils.js"></script>
+<script>
+  const user = authGuard();
+  if (user) {
+    if (user.role !== "admin") window.location.href = "dashboard.html";
+
+    buildSidebar("admin");
+
+    // Stats
+    const all       = getAllBookings();
+    const confirmed = all.filter(b => b.status === "Confirmed");
+    const cancelled = all.filter(b => b.status === "Cancelled");
+    const hotelB    = all.filter(b => b.type   === "hotel");
+    const revenue   = hotelB.filter(b => b.status === "Confirmed").reduce((s,b) => s + (b.total||0), 0);
+
+    document.getElementById("admin-stats").innerHTML = [
+      { icon:"📋", label:"Total Bookings",    value: all.length,       color:"var(--info)" },
+      { icon:"✅", label:"Confirmed",          value: confirmed.length, color:"var(--success)" },
+      { icon:"✕",  label:"Cancelled",          value: cancelled.length, color:"var(--error)" },
+      { icon:"💰", label:"Hotel Revenue",      value: `$${revenue.toLocaleString()}`, color:"var(--gold)" },
+    ].map(s => `
+      <div class="stat-card">
+        <div class="stat-icon">${s.icon}</div>
+        <div class="stat-value" style="color:${s.color}; font-size:1.6rem;">${s.value}</div>
+        <div class="stat-label">${s.label}</div>
+      </div>`).join("");
+
+    // Tab switching
+    window.showTab = function(tab) {
+      ["bookings","rooms","users"].forEach(t => {
+        document.getElementById(`panel-${t}`).style.display = t === tab ? "block" : "none";
+        document.getElementById(`tab-${t}`).className =
+          t === tab ? "btn btn-gold btn-sm" : "btn btn-ghost btn-sm";
+      });
+    };
+
+    // Bookings table
+    const bookingRows = all.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(b => `
+      <tr>
+        <td><code style="font-size:0.78rem;">${b.id}</code></td>
+        <td>${b.guestName}</td>
+        <td>${b.type === "hotel" ? "🏨 Hotel" : "🍽 Restaurant"}</td>
+        <td>${b.type === "hotel" ? `Room ${b.roomId}` : `Table ${b.tableId}`}</td>
+        <td>${b.type === "hotel" ? fmtDate(b.checkIn) : fmtDate(b.date)}</td>
+        <td>${statusBadge(b.status)}</td>
+        <td>${b.type === "hotel" ? `$${b.total?.toLocaleString()}` : "—"}</td>
+        <td>
+          ${b.status === "Confirmed"
+            ? `<button class="btn btn-danger btn-sm" onclick="adminCancel('${b.id}')">Cancel</button>`
+            : `<span style="color:var(--text-3); font-size:0.8rem;">—</span>`}
+        </td>
+      </tr>`).join("");
+
+    document.getElementById("panel-bookings").innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Booking ID</th><th>Guest</th><th>Type</th>
+              <th>Room/Table</th><th>Date</th><th>Status</th>
+              <th>Amount</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody>${bookingRows || `<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-3);">No bookings yet</td></tr>`}</tbody>
+        </table>
+      </div>`;
+
+    // Room status table
+    const roomStats = getRoomStats();
+    document.getElementById("panel-rooms").innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Room</th><th>Type</th><th>Bed</th><th>Floor</th><th>Price/Night</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            ${roomStats.map(r => `
+              <tr>
+                <td><strong>${r.id}</strong></td>
+                <td><span class="type-badge" style="background:${TYPE_COLORS[r.type]};padding:2px 8px;border-radius:99px;font-size:0.72rem;">${r.type}</span></td>
+                <td>${r.bed}</td>
+                <td>${r.floor}</td>
+                <td>$${r.price}</td>
+                <td><span class="badge ${r.status === "Available" ? "badge-success" : "badge-warning"}">● ${r.status}</span></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>`;
+
+    // Users table
+    document.getElementById("panel-users").innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Username</th><th>Full Name</th><th>Email</th><th>Role</th><th>Bookings</th></tr>
+          </thead>
+          <tbody>
+            ${Object.entries(DB.users).map(([uname, u]) => {
+              const count = all.filter(b => b.username === uname).length;
+              return `<tr>
+                <td><strong>${uname}</strong></td>
+                <td>${u.fullName}</td>
+                <td>${u.email}</td>
+                <td><span class="badge ${u.role === "admin" ? "badge-gold" : "badge-info"}">${u.role.toUpperCase()}</span></td>
+                <td>${count}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>`;
+
+    window.adminCancel = function(id) {
+      showConfirm("Cancel Booking", `Cancel booking ${id}?`, () => {
+        const r = cancelBooking(id);
+        showToast(r.msg, r.ok ? "success" : "error");
+        if (r.ok) setTimeout(() => location.reload(), 800);
+      });
+    };
+
+    showTab("bookings");
+  }
+</script>
+</body>
+</html>

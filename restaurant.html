@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LuxeStay — Restaurant</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🏨</div>
+      <div class="logo-name">LuxeStay</div>
+      <div class="logo-sub">Hotel & Restaurant</div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="sidebar-avatar">G</div>
+      <div>
+        <div class="user-name" id="sidebar-name">Guest</div>
+        <div class="user-role" id="sidebar-role">GUEST</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" id="logout-btn">⏻ &nbsp;Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <h1 class="font-display">🍽 Restaurant Reservations</h1>
+        <div class="page-header-sub">Choose your table and preferred dining time</div>
+      </div>
+    </div>
+
+    <div class="filter-bar" id="filter-bar">
+      <span class="filter-label">Zone:</span>
+    </div>
+
+    <div class="two-panel" style="height:calc(100vh - 140px);">
+      <!-- Left: tables -->
+      <div class="panel-left">
+        <div class="room-grid" id="table-grid"></div>
+      </div>
+
+      <!-- Right: form -->
+      <div class="panel-right">
+        <h3 style="color:var(--gold); margin-bottom:16px;">Reservation Details</h3>
+
+        <div class="card" id="table-summary" style="margin-bottom:20px;">
+          <p style="color:var(--text-2); font-size:0.88rem;">← Select a table from the list</p>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Reservation Date</label>
+          <input class="form-input" type="date" id="res-date" />
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Meal Time</label>
+          <select class="form-select" id="meal-time">
+            <optgroup label="Breakfast">
+              <option>Breakfast — 07:00</option>
+              <option>Breakfast — 08:00</option>
+              <option>Breakfast — 09:00</option>
+            </optgroup>
+            <optgroup label="Lunch">
+              <option>Lunch — 12:00</option>
+              <option>Lunch — 13:00</option>
+              <option>Lunch — 14:00</option>
+            </optgroup>
+            <optgroup label="Dinner">
+              <option>Dinner — 18:00</option>
+              <option selected>Dinner — 19:00</option>
+              <option>Dinner — 20:00</option>
+              <option>Dinner — 21:00</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Number of Guests</label>
+          <select class="form-select" id="guests">
+            <option>1</option><option selected>2</option>
+            <option>3</option><option>4</option>
+            <option>5</option><option>6</option>
+            <option>7</option><option>8</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Special Requests (optional)</label>
+          <textarea class="form-textarea" id="requests" placeholder="Allergies, celebrations, preferences…"></textarea>
+        </div>
+
+        <div class="divider"></div>
+        <div class="form-error" id="res-error" style="margin-bottom:10px;"></div>
+
+        <button class="btn btn-gold btn-full" id="reserve-btn" style="margin-bottom:8px;">Confirm Reservation</button>
+        <button class="btn btn-ghost btn-full" id="clear-btn">Clear Selection</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/database.js"></script>
+<script src="js/utils.js"></script>
+<script>
+  const user = authGuard();
+  if (user) {
+    buildSidebar("restaurant");
+
+    let selectedTable = null;
+
+    document.getElementById("res-date").min   = todayStr();
+    document.getElementById("res-date").value = todayStr();
+
+    // Zone filters
+    const filterBar = document.getElementById("filter-bar");
+    const zones = ["All", "Window", "Main", "Terrace", "Private", "Bar"];
+    let activeZone = "All";
+
+    zones.forEach(z => {
+      const btn = document.createElement("button");
+      btn.className = `filter-btn${z === "All" ? " active" : ""}`;
+      btn.textContent = `${ZONE_ICONS[z] || ""} ${z}`.trim();
+      btn.addEventListener("click", () => {
+        activeZone = z;
+        filterBar.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderTables();
+      });
+      filterBar.appendChild(btn);
+    });
+
+    function renderTables() {
+      const grid   = document.getElementById("table-grid");
+      const tables = TABLES.filter(t => activeZone === "All" || t.zone === activeZone);
+      grid.innerHTML = tables.map(t => {
+        const isSel = selectedTable?.id === t.id;
+        const color = ZONE_COLORS[t.zone];
+        const icon  = ZONE_ICONS[t.zone];
+        return `
+          <div class="room-card${isSel ? " selected" : ""}" onclick="selectTable('${t.id}')">
+            <div class="room-top">
+              <span class="room-id">${icon} Table ${t.id}</span>
+              <span class="room-price">👥 ${t.seats} seats</span>
+            </div>
+            <div class="room-mid">
+              <span class="type-badge" style="background:${color}">${t.zone}</span>
+              <span style="font-size:0.82rem; color:var(--text-2);">${t.desc}</span>
+            </div>
+            <div class="room-bottom">
+              <button class="btn btn-sm ${isSel ? "btn-gold" : "btn-outline"}" onclick="selectTable('${t.id}'); event.stopPropagation();">
+                ${isSel ? "✓ Selected" : "Select Table"}
+              </button>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    window.selectTable = function(tableId) {
+      selectedTable = TABLES.find(t => t.id === tableId);
+      renderTables();
+      const el = document.getElementById("table-summary");
+      el.innerHTML = `
+        <div style="font-weight:700; font-size:1rem;">Table ${selectedTable.id} — ${selectedTable.zone} Zone</div>
+        <div style="color:var(--text-2); font-size:0.85rem; margin-top:4px;">
+          👥 Up to ${selectedTable.seats} guests &nbsp;•&nbsp; ${selectedTable.desc}
+        </div>`;
+    };
+
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      selectedTable = null;
+      renderTables();
+      document.getElementById("table-summary").innerHTML =
+        `<p style="color:var(--text-2); font-size:0.88rem;">← Select a table from the list</p>`;
+      document.getElementById("res-error").textContent = "";
+    });
+
+    document.getElementById("reserve-btn").addEventListener("click", () => {
+      const errEl = document.getElementById("res-error");
+      errEl.textContent = "";
+
+      if (!selectedTable) { errEl.textContent = "⚠ Please select a table first."; return; }
+
+      const date     = document.getElementById("res-date").value;
+      const mealTime = document.getElementById("meal-time").value;
+      const guests   = parseInt(document.getElementById("guests").value);
+
+      if (!date) { errEl.textContent = "⚠ Please select a date."; return; }
+      if (guests > selectedTable.seats) {
+        errEl.textContent = `⚠ Table ${selectedTable.id} only seats ${selectedTable.seats} guests.`;
+        return;
+      }
+      if (!isTableAvailable(selectedTable.id, date, mealTime)) {
+        errEl.textContent = "⚠ This table is already reserved at that time. Please choose another.";
+        return;
+      }
+
+      const summary = `Table ${selectedTable.id} — ${selectedTable.zone} Zone\n${fmtDate(date)}\n${mealTime}  •  ${guests} guest(s)`;
+
+      showConfirm("Confirm Reservation", summary, () => {
+        try {
+          const requests = document.getElementById("requests").value;
+          const booking  = bookTable(selectedTable.id, date, mealTime, guests, requests);
+          showToast(`Reservation ${booking.id} confirmed!`, "success");
+          setTimeout(() => window.location.href = "bookings.html", 1200);
+        } catch(e) {
+          errEl.textContent = `⚠ ${e.message}`;
+        }
+      });
+    });
+
+    renderTables();
+  }
+</script>
+</body>
+</html>

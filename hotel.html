@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LuxeStay — Hotel Booking</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🏨</div>
+      <div class="logo-name">LuxeStay</div>
+      <div class="logo-sub">Hotel & Restaurant</div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="sidebar-avatar">G</div>
+      <div>
+        <div class="user-name" id="sidebar-name">Guest</div>
+        <div class="user-role" id="sidebar-role">GUEST</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" id="logout-btn">⏻ &nbsp;Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <h1 class="font-display">🏨 Hotel Room Booking</h1>
+        <div class="page-header-sub">Browse and book from our curated room selection</div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar" id="filter-bar">
+      <span class="filter-label">Type:</span>
+    </div>
+
+    <!-- Two panel -->
+    <div class="two-panel" style="height:calc(100vh - 140px);">
+      <!-- Left: rooms -->
+      <div class="panel-left">
+        <div class="room-grid" id="room-grid"></div>
+      </div>
+
+      <!-- Right: form -->
+      <div class="panel-right">
+        <h3 style="color:var(--gold); margin-bottom:16px;">Booking Details</h3>
+
+        <!-- Selected room summary -->
+        <div class="card" id="room-summary" style="margin-bottom:20px;">
+          <p style="color:var(--text-2); font-size:0.88rem;">← Select a room from the list</p>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Check-in Date</label>
+          <input class="form-input" type="date" id="checkin" />
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Check-out Date</label>
+          <input class="form-input" type="date" id="checkout" />
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Number of Guests</label>
+          <select class="form-select" id="guests">
+            <option>1</option><option selected>2</option>
+            <option>3</option><option>4</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Special Requests (optional)</label>
+          <textarea class="form-textarea" id="requests" placeholder="Any special requirements…"></textarea>
+        </div>
+
+        <div class="divider"></div>
+
+        <div id="total-display" style="font-size:1.1rem; font-weight:700; color:var(--gold); margin-bottom:12px;">
+          Select a room and dates
+        </div>
+
+        <div class="form-error" id="book-error" style="margin-bottom:10px;"></div>
+
+        <button class="btn btn-gold btn-full" id="book-btn" style="margin-bottom:8px;">Confirm Booking</button>
+        <button class="btn btn-ghost btn-full" id="clear-btn">Clear Selection</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/database.js"></script>
+<script src="js/utils.js"></script>
+<script>
+  const user = authGuard();
+  if (user) {
+    buildSidebar("hotel");
+
+    let selectedRoom = null;
+
+    // Set date defaults
+    const today    = todayStr();
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById("checkin").min  = today;
+    document.getElementById("checkin").value = today;
+    document.getElementById("checkout").min  = today;
+    document.getElementById("checkout").value = tomorrow.toISOString().split("T")[0];
+
+    // Filter buttons
+    const filterBar = document.getElementById("filter-bar");
+    const types = ["All", "Standard", "Deluxe", "Suite", "Penthouse"];
+    let activeFilter = "All";
+
+    types.forEach(t => {
+      const btn = document.createElement("button");
+      btn.className = `filter-btn${t === "All" ? " active" : ""}`;
+      btn.textContent = t;
+      btn.addEventListener("click", () => {
+        activeFilter = t;
+        filterBar.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderRooms();
+      });
+      filterBar.appendChild(btn);
+    });
+
+    function renderRooms() {
+      const grid  = document.getElementById("room-grid");
+      const rooms = ROOMS.filter(r => activeFilter === "All" || r.type === activeFilter);
+      grid.innerHTML = rooms.map(r => {
+        const isSel = selectedRoom?.id === r.id;
+        return `
+          <div class="room-card${isSel ? " selected" : ""}" onclick="selectRoom('${r.id}')">
+            <div class="room-top">
+              <span class="room-id">Room ${r.id}</span>
+              <span class="room-price">$${r.price}/night</span>
+            </div>
+            <div class="room-mid">
+              <span class="type-badge" style="background:${TYPE_COLORS[r.type]}">${r.type}</span>
+              <span style="font-size:0.82rem; color:var(--text-2);">🛏 ${r.bed} Bed</span>
+              <span style="font-size:0.82rem; color:var(--text-2);">Floor ${r.floor}</span>
+            </div>
+            <div class="room-amenities">${r.amenities.join("  •  ")}</div>
+            <div class="room-bottom">
+              <button class="btn btn-sm ${isSel ? "btn-gold" : "btn-outline"}" onclick="selectRoom('${r.id}'); event.stopPropagation();">
+                ${isSel ? "✓ Selected" : "Select Room"}
+              </button>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    window.selectRoom = function(roomId) {
+      selectedRoom = ROOMS.find(r => r.id === roomId);
+      renderRooms();
+      updateSummary();
+      updateTotal();
+    };
+
+    function updateSummary() {
+      const el = document.getElementById("room-summary");
+      if (!selectedRoom) {
+        el.innerHTML = `<p style="color:var(--text-2); font-size:0.88rem;">← Select a room from the list</p>`;
+      } else {
+        el.innerHTML = `
+          <div style="font-weight:700; font-size:1rem;">Room ${selectedRoom.id} — ${selectedRoom.type}</div>
+          <div style="color:var(--text-2); font-size:0.85rem; margin-top:4px;">
+            🛏 ${selectedRoom.bed} Bed &nbsp;•&nbsp; Floor ${selectedRoom.floor} &nbsp;•&nbsp; $${selectedRoom.price}/night
+          </div>`;
+      }
+    }
+
+    function updateTotal() {
+      const el = document.getElementById("total-display");
+      if (!selectedRoom) { el.textContent = "Select a room and dates"; return; }
+      const ci = document.getElementById("checkin").value;
+      const co = document.getElementById("checkout").value;
+      if (!ci || !co) return;
+      const nights = Math.round((new Date(co) - new Date(ci)) / 86400000);
+      if (nights <= 0) { el.textContent = "⚠ Check-out must be after check-in"; el.style.color = "var(--error)"; return; }
+      el.style.color = "var(--gold)";
+      el.textContent = `$${(nights * selectedRoom.price).toLocaleString()}  (${nights} night${nights !== 1 ? "s" : ""} × $${selectedRoom.price})`;
+    }
+
+    document.getElementById("checkin").addEventListener("change", updateTotal);
+    document.getElementById("checkout").addEventListener("change", updateTotal);
+
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      selectedRoom = null;
+      renderRooms();
+      updateSummary();
+      document.getElementById("total-display").textContent = "Select a room and dates";
+      document.getElementById("book-error").textContent = "";
+    });
+
+    document.getElementById("book-btn").addEventListener("click", () => {
+      const errEl = document.getElementById("book-error");
+      errEl.textContent = "";
+
+      if (!selectedRoom) { errEl.textContent = "⚠ Please select a room first."; return; }
+      const ci     = document.getElementById("checkin").value;
+      const co     = document.getElementById("checkout").value;
+      const guests = parseInt(document.getElementById("guests").value);
+      if (!ci || !co) { errEl.textContent = "⚠ Please select check-in and check-out dates."; return; }
+      const nights = Math.round((new Date(co) - new Date(ci)) / 86400000);
+      if (nights <= 0) { errEl.textContent = "⚠ Check-out must be after check-in."; return; }
+
+      const total   = nights * selectedRoom.price;
+      const summary = `Room ${selectedRoom.id} — ${selectedRoom.type}\n${fmtDate(ci)} → ${fmtDate(co)}\n${nights} night(s)  •  ${guests} guest(s)  •  $${total.toLocaleString()} total`;
+
+      showConfirm("Confirm Room Booking", summary, () => {
+        try {
+          const requests = document.getElementById("requests").value;
+          const booking  = bookRoom(selectedRoom.id, ci, co, guests, requests);
+          showToast(`Booking ${booking.id} confirmed!`, "success");
+          setTimeout(() => window.location.href = "bookings.html", 1200);
+        } catch(e) {
+          errEl.textContent = `⚠ ${e.message}`;
+        }
+      });
+    });
+
+    renderRooms();
+  }
+</script>
+</body>
+</html>

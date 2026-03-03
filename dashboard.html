@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LuxeStay — Dashboard</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🏨</div>
+      <div class="logo-name">LuxeStay</div>
+      <div class="logo-sub">Hotel & Restaurant</div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="sidebar-avatar">G</div>
+      <div>
+        <div class="user-name" id="sidebar-name">Guest</div>
+        <div class="user-role" id="sidebar-role">GUEST</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" id="logout-btn">⏻ &nbsp;Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <h1 class="font-display" id="greeting">Good morning</h1>
+        <div class="page-header-sub" id="date-str"></div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <a href="hotel.html"      class="btn btn-gold">🏨 Book Room</a>
+        <a href="restaurant.html" class="btn btn-outline">🍽 Reserve Table</a>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <!-- Stats -->
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <!-- Two column -->
+      <div class="dash-grid">
+        <!-- Recent bookings -->
+        <div>
+          <h3 style="margin-bottom:16px; color:var(--gold);">Recent Bookings</h3>
+          <div id="recent-bookings"></div>
+        </div>
+        <!-- Right column -->
+        <div>
+          <h3 style="margin-bottom:16px; color:var(--gold);">Room Availability</h3>
+          <div class="card" id="avail-card" style="margin-bottom:20px;"></div>
+          <h3 style="margin-bottom:16px; color:var(--gold);">Quick Tips</h3>
+          <div class="card">
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="font-size:0.85rem; color:var(--text-2);">🏨 &nbsp;Book rooms up to 12 months ahead</div>
+              <div style="font-size:0.85rem; color:var(--text-2);">🍽 &nbsp;Reserve tables for up to 8 guests</div>
+              <div style="font-size:0.85rem; color:var(--text-2);">📋 &nbsp;Cancel any booking from My Bookings</div>
+              <div style="font-size:0.85rem; color:var(--text-2);">⚙️ &nbsp;Admins can view all bookings</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/database.js"></script>
+<script src="js/utils.js"></script>
+<script>
+  const user = authGuard();
+  if (user) {
+    buildSidebar("dashboard");
+
+    // Greeting
+    const h = new Date().getHours();
+    document.getElementById("greeting").textContent =
+      `${h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"}, ${user.fullName.split(" ")[0]} 👋`;
+    document.getElementById("date-str").textContent =
+      new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
+
+    // Stats
+    const bookings = getUserBookings();
+    const active   = bookings.filter(b => b.status === "Confirmed");
+    const hotelB   = bookings.filter(b => b.type === "hotel");
+    const restB    = bookings.filter(b => b.type === "restaurant");
+
+    const statsData = [
+      { icon:"📋", label:"Total Bookings",      value: bookings.length, color:"var(--info)" },
+      { icon:"✅", label:"Active Bookings",      value: active.length,   color:"var(--success)" },
+      { icon:"🏨", label:"Hotel Bookings",       value: hotelB.length,   color:"var(--gold)" },
+      { icon:"🍽", label:"Restaurant Reserv.",   value: restB.length,    color:"var(--warning)" },
+    ];
+
+    document.getElementById("stats-grid").innerHTML = statsData.map(s => `
+      <div class="stat-card">
+        <div class="stat-icon">${s.icon}</div>
+        <div class="stat-value" style="color:${s.color}">${s.value}</div>
+        <div class="stat-label">${s.label}</div>
+      </div>`).join("");
+
+    // Recent bookings
+    const recent = [...bookings].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+    const recentEl = document.getElementById("recent-bookings");
+
+    if (!recent.length) {
+      recentEl.innerHTML = emptyState("📭", "No bookings yet", "Make your first booking", "🏨 Book a Room", "hotel.html");
+    } else {
+      recentEl.innerHTML = recent.map(b => `
+        <div class="booking-card" onclick="window.location='bookings.html'">
+          <div class="booking-top">
+            <div>
+              <div class="booking-title">${b.type === "hotel" ? "🏨" : "🍽"} ${b.type === "hotel" ? `Room ${b.roomId} — ${b.roomType}` : `Table ${b.tableId} — ${b.zone}`}</div>
+              <div class="booking-meta">${b.type === "hotel" ? `${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}` : `${fmtDate(b.date)} • ${b.mealTime}`}</div>
+            </div>
+            <div style="text-align:right;">
+              ${statusBadge(b.status)}
+              <div style="font-size:0.72rem; color:var(--text-3); margin-top:4px; font-family:monospace;">${b.id}</div>
+            </div>
+          </div>
+        </div>`).join("");
+    }
+
+    // Availability
+    const typeCounts = {};
+    ROOMS.forEach(r => typeCounts[r.type] = (typeCounts[r.type] || 0) + 1);
+    const typeColorsMap = { Standard:"var(--info)", Deluxe:"var(--gold)", Suite:"var(--warning)", Penthouse:"var(--error)" };
+    document.getElementById("avail-card").innerHTML =
+      Object.entries(typeCounts).map(([type, count]) => `
+        <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <span style="color:${typeColorsMap[type]}">● ${type}</span>
+          <span style="color:var(--text-2); font-size:0.85rem;">${count} rooms</span>
+        </div>`).join("") +
+      `<div style="padding-top:10px; font-size:0.85rem; color:var(--text-2);">🍽 ${TABLES.length} tables across 5 dining zones</div>`;
+  }
+</script>
+</body>
+</html>
